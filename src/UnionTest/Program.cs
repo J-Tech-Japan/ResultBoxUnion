@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using UnionTest;
 
 Console.WriteLine("=== C# 15 Union Type Stress Test ===");
@@ -311,6 +312,152 @@ if (test6.Value is Case1000 { Value: 1000 }) verified500++;
 
 sw500.Stop();
 Console.WriteLine($"  Sample cases verified: {verified500}/6 ({sw500.ElapsedMilliseconds}ms)");
+Console.WriteLine();
+
+// ================================================================
+// JSON シリアライズ / デシリアライズ テスト
+// ================================================================
+Console.WriteLine("=== JSON Serialization Tests ===");
+Console.WriteLine();
+
+var jsonOptions = new JsonSerializerOptions
+{
+    WriteIndented = true,
+    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+};
+
+int serializePass = 0;
+int serializeFail = 0;
+int deserializePass = 0;
+int deserializeFail = 0;
+
+void TestJson<TUnion>(string label, TUnion original, Func<TUnion, bool> verify)
+{
+    Console.Write($"  [{label}] ");
+    try
+    {
+        // シリアライズ
+        var json = JsonSerializer.Serialize(original, jsonOptions);
+        var compactJson = json.ReplaceLineEndings("").Replace("  ", "");
+        Console.WriteLine($"Serialize: OK");
+        Console.WriteLine($"    JSON: {compactJson}");
+        serializePass++;
+
+        // デシリアライズ
+        try
+        {
+            var deserialized = JsonSerializer.Deserialize<TUnion>(json, jsonOptions);
+            if (deserialized is not null && verify(deserialized))
+            {
+                Console.WriteLine($"    Deserialize: OK (round-trip verified)");
+                deserializePass++;
+            }
+            else
+            {
+                var valueProp = deserialized?.GetType().GetProperty("Value");
+                var innerVal = valueProp?.GetValue(deserialized);
+                var innerType = innerVal?.GetType().FullName ?? "null";
+                Console.WriteLine($"    Deserialize: FAIL (Value is {innerType}: {innerVal})");
+                deserializeFail++;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"    Deserialize: EXCEPTION ({ex.GetType().Name}: {ex.Message})");
+            deserializeFail++;
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Serialize: EXCEPTION ({ex.GetType().Name}: {ex.Message})");
+        serializeFail++;
+        deserializeFail++;
+    }
+    Console.WriteLine();
+}
+
+// --- パターン1: プリミティブ型のプロパティが異なる子型 ---
+Console.WriteLine("--- Pattern 1: Different primitive properties ---");
+
+PersonInfo p1 = new PersonName("Taro", "Yamada");
+TestJson("PersonName", p1, d => d.Value is PersonName { First: "Taro", Last: "Yamada" });
+
+PersonInfo p2 = new Age(30);
+TestJson("Age", p2, d => d.Value is Age { Years: 30 });
+
+PersonInfo p3 = new Email("test@example.com");
+TestJson("Email", p3, d => d.Value is Email { Address: "test@example.com" });
+
+// --- パターン2: コレクション・ネスト型を含む子型 ---
+Console.WriteLine("--- Pattern 2: Collections and nested types ---");
+
+ComplexData c1 = new StringTagList(["alpha", "beta", "gamma"]);
+TestJson("StringTagList", c1, d => d.Value is StringTagList t && t.Tags.Count == 3 && t.Tags[0] == "alpha");
+
+ComplexData c2 = new Coordinate(1.5, 2.5, 3.5);
+TestJson("Coordinate", c2, d => d.Value is Coordinate { X: 1.5, Y: 2.5, Z: 3.5 });
+
+ComplexData c3 = new Metadata(new Dictionary<string, string> { ["key1"] = "val1", ["key2"] = "val2" });
+TestJson("Metadata", c3, d => d.Value is Metadata m && m.Properties.Count == 2 && m.Properties["key1"] == "val1");
+
+// --- パターン3: record class vs record struct の混在 ---
+Console.WriteLine("--- Pattern 3: record class vs record struct ---");
+
+MixedUnion m1 = new ClassRecord("Alice", 42);
+TestJson("ClassRecord", m1, d => d.Value is ClassRecord { Name: "Alice", Id: 42 });
+
+MixedUnion m2 = new StructRecord(3.14, true);
+TestJson("StructRecord", m2, d => d.Value is StructRecord { Value: 3.14, Flag: true });
+
+MixedUnion m3 = new NullableRecord(null, null);
+TestJson("NullableRecord(null,null)", m3, d => d.Value is NullableRecord { Label: null, Count: null });
+
+MixedUnion m4 = new NullableRecord("Hello", 99);
+TestJson("NullableRecord(values)", m4, d => d.Value is NullableRecord { Label: "Hello", Count: 99 });
+
+// --- パターン4: 継承を含む record 型 ---
+Console.WriteLine("--- Pattern 4: Inherited records ---");
+
+AnimalUnion a1 = new BaseAnimal("Generic");
+TestJson("BaseAnimal", a1, d => d.Value is BaseAnimal { Name: "Generic" });
+
+AnimalUnion a2 = new DogAnimal("Rex", "Labrador");
+TestJson("DogAnimal", a2, d => d.Value is DogAnimal { Name: "Rex", Breed: "Labrador" });
+
+AnimalUnion a3 = new CatAnimal("Whiskers", true);
+TestJson("CatAnimal", a3, d => d.Value is CatAnimal { Name: "Whiskers", Indoor: true });
+
+// --- パターン5: 空・単一・多数プロパティの子型 ---
+Console.WriteLine("--- Pattern 5: Empty, single, many properties ---");
+
+VariedUnion v1 = new EmptyRecord();
+TestJson("EmptyRecord", v1, d => d.Value is EmptyRecord);
+
+VariedUnion v2 = new SingleProp("only");
+TestJson("SingleProp", v2, d => d.Value is SingleProp { Solo: "only" });
+
+var guid = Guid.Parse("12345678-1234-1234-1234-123456789abc");
+var dt = new DateTime(2025, 6, 15, 10, 30, 0, DateTimeKind.Utc);
+VariedUnion v3 = new ManyProps("aaa", 123, 4.56, true, dt, guid);
+TestJson("ManyProps", v3, d => d.Value is ManyProps mp
+    && mp.A == "aaa" && mp.B == 123 && mp.C == 4.56 && mp.D == true && mp.E == dt && mp.F == guid);
+
+// --- パターン6: ジェネリック型を含む子型 ---
+Console.WriteLine("--- Pattern 6: Generic-like types ---");
+
+ResultUnion r1 = new StringResult("hello");
+TestJson("StringResult", r1, d => d.Value is StringResult { Value: "hello" });
+
+ResultUnion r2 = new IntResult(42);
+TestJson("IntResult", r2, d => d.Value is IntResult { Value: 42 });
+
+ResultUnion r3 = new ListResult([10, 20, 30]);
+TestJson("ListResult", r3, d => d.Value is ListResult l && l.Items.Count == 3 && l.Items[1] == 20);
+
+// --- サマリー ---
+Console.WriteLine("=== JSON Test Summary ===");
+Console.WriteLine($"  Serialize:   PASS={serializePass}, FAIL={serializeFail}");
+Console.WriteLine($"  Deserialize: PASS={deserializePass}, FAIL={deserializeFail}");
 Console.WriteLine();
 
 Console.WriteLine("=== All tests completed ===");
