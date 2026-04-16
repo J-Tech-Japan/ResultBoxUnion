@@ -1,5 +1,7 @@
 # ResultBoxUnion
 
+**English** | [日本語](README_JA.md)
+
 Railway-oriented programming library for C# using **C# 15 Union Types** (.NET 11).
 
 A reimagination of [ResultBoxes](https://github.com/J-Tech-Japan/ResultBoxes) built entirely on the `union` keyword.
