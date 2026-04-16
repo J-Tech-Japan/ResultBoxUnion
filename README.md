@@ -1,6 +1,8 @@
-# ResultBoxUnion
+# ResultBoxUnion (Preview)
 
 **English** | [日本語](README_JA.md)
+
+> **Preview Notice:** This library is built on C# 15 union types, which are currently in preview (.NET 11 Preview 3). The union syntax and behavior may change before the official release. Do not use in production until unions are stable.
 
 Railway-oriented programming library for C# using **C# 15 Union Types** (.NET 11).
 

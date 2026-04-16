@@ -1,6 +1,8 @@
-# ResultBoxUnion
+# ResultBoxUnion (Preview)
 
 [English](README.md) | **日本語**
+
+> **プレビュー版について:** 本ライブラリは C# 15 の union 型を使用しており、現在プレビュー段階 (.NET 11 Preview 3) です。正式リリースまでに union の記法や動作が変更される可能性があります。union が安定するまで本番環境での使用は推奨しません。
 
 C# 15 の **Union 型** を使った Railway-oriented programming ライブラリ (.NET 11)。
 
